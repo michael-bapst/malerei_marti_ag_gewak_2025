@@ -254,3 +254,9 @@ function stopSlideshow() {
         setTimeout(() => { if (fullscreen) fullscreen.classList.add('hidden'); }, 300);
     }
 }
+
+if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js');
+    });
+}
