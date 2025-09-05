@@ -35,7 +35,6 @@ let playSessionId = 0;
 
 const fullscreen = document.getElementById("fullscreen");
 const fullscreenImg = document.getElementById("fullscreen-img");
-const fullscreenText = document.getElementById("fullscreen-text");
 const closeFullscreenBtn = document.getElementById("close-fullscreen");
 
 const ENTER_DURATION_MS = 1200;
@@ -88,7 +87,6 @@ async function showSlide(index) {
     const welcome = document.querySelector('.welcome-text');
     if (welcome) welcome.style.display = 'none';
 
-    fullscreenText.textContent = '';
     fullscreenImg.setAttribute('fetchpriority', index === 0 ? 'high' : 'auto');
 
     fullscreen.classList.remove('hidden');

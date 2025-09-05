@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v3-2025-01-15a';
+const CACHE_VERSION = 'v3-2025-01-15b';
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 const IMAGES_CACHE = `images-${CACHE_VERSION}`;
 
