@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2-2025-09-05';
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 const IMAGES_CACHE = `images-${CACHE_VERSION}`;
 
@@ -7,7 +7,7 @@ const APP_SHELL = [
   './index.html',
   './style.css',
   './script.js',
-  './manifest.webmanifest',
+  './site.webmanifest',
   'https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -28,14 +28,29 @@ const IMAGE_FILES = [
   "Hurni Rebenweg Kallnach 05.jpg","IMG-20160718-WA0002.jpg","Köhli Krosenrain Kallnach 05 (3).jpg","MFH Schützenrain 11und 11A, Ortschwaben 006.JPG","P1000443.JPG","P1000453.JPG","P1000459.JPG","P1000461.JPG","P1000774.JPG","P1000782.JPG",
   "P1000793 (2).JPG","P1010022.JPG","P1010024.JPG","P1010081.JPG","P1010082.JPG","P1010089.JPG","P1010099.JPG","P1010103.JPG","P1010104.JPG","P1010113 (2).JPG",
   "P1010163.JPG","P1010173.JPG","p1010206.jpg","P1010910 - Kopie.JPG","Pfarrhaus (14).JPG","Renovation Fassade , Bargen 2009 (15).JPG","Wohn.- Geschäftshaus, Bargen 3.jpg"
-].map(n => `./Bilder Gewak/${n}`);
+].map(n => encodeURI(`./Bilder Gewak/${n}`));
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const shell = await caches.open(APP_SHELL_CACHE);
     await shell.addAll(APP_SHELL);
-    const images = await caches.open(IMAGES_CACHE);
-    await images.addAll(IMAGE_FILES);
+
+    const imgCache = await caches.open(IMAGES_CACHE);
+
+    // robustes precaching (kein Fail-All)
+    const limit = 8; // parallele Downloads
+    let i = 0;
+    async function worker() {
+      while (i < IMAGE_FILES.length) {
+        const url = IMAGE_FILES[i++];
+        try {
+          const res = await fetch(url, { cache: 'no-store' });
+          if (res.ok) await imgCache.put(url, res.clone());
+        } catch (_) { /* ignorieren, weiter */ }
+      }
+    }
+    await Promise.all(Array.from({ length: limit }, worker));
+
     await self.skipWaiting();
   })());
 });
@@ -43,49 +58,51 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter(k => ![APP_SHELL_CACHE, IMAGES_CACHE].includes(k)).map(k => caches.delete(k)));
+    await Promise.all(
+      keys
+        .filter(k => ![APP_SHELL_CACHE, IMAGES_CACHE].includes(k))
+        .map(k => caches.delete(k))
+    );
     await self.clients.claim();
   })());
 });
 
+// Konsistente Bilderkennung: nur encodierter Ordner
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
+  if (url.origin !== location.origin) return;
 
-  if (url.origin === location.origin) {
-    // Bilder: offline-first aus Bild-Cache (Pfadteil enthält den Bilder-Ordner)
-    if (url.pathname.includes('/Bilder%20Gewak/') || url.pathname.includes('/Bilder Gewak/')) {
-      event.respondWith((async () => {
-        const cache = await caches.open(IMAGES_CACHE);
-        const cached = await cache.match(event.request);
-        if (cached) return cached;
-        try {
-          const res = await fetch(event.request);
-          cache.put(event.request, res.clone());
-          return res;
-        } catch {
-          return new Response('', { status: 404 });
-        }
-      })());
-      return;
-    }
-
-    // Allgemein: erst in allen Caches suchen, dann Netzwerk, dann Fallback auf index.html
+  // Bilder: offline-first
+  if (url.pathname.includes('/Bilder%20Gewak/')) {
     event.respondWith((async () => {
-      const cachedAny = await caches.match(event.request);
-      if (cachedAny) return cachedAny;
+      const cache = await caches.open(IMAGES_CACHE);
+      const hit = await cache.match(event.request);
+      if (hit) return hit;
       try {
         const res = await fetch(event.request);
-        // Shell-Resourcen nachladen
-        const shell = await caches.open(APP_SHELL_CACHE);
-        shell.put(event.request, res.clone());
+        cache.put(event.request, res.clone());
         return res;
       } catch {
-        const shell = await caches.open(APP_SHELL_CACHE);
-        const index = await shell.match('./index.html');
-        return index || new Response('', { status: 404 });
+        return new Response('', { status: 404 });
       }
     })());
+    return;
   }
+
+  // App-Shell: cache-first, dann Netz, dann index.html
+  event.respondWith((async () => {
+    const cached = await caches.match(event.request);
+    if (cached) return cached;
+    try {
+      const res = await fetch(event.request);
+      const shell = await caches.open(APP_SHELL_CACHE);
+      shell.put(event.request, res.clone());
+      return res;
+    } catch {
+      const shell = await caches.open(APP_SHELL_CACHE);
+      return (await shell.match('./index.html')) || new Response('', { status: 404 });
+    }
+  })());
 });
 
 

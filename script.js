@@ -45,112 +45,101 @@ const HOLD_FIRST_MS = 20000;
 const HOLD_OTHERS_MS = 6000;
 const GRID_PAUSE_MS = 2000;
 
-const preloadCache = new Map();
-function preloadAll(slides) {
-    slides.forEach(src => {
-        if (!preloadCache.has(src)) {
-            const img = new Image();
-            img.decoding = "async";
-            img.loading = "eager";
-            img.src = src;
-            preloadCache.set(src, img);
-        }
-    });
+// Konstante Anzahl vorwärmen
+const PREWARM_COUNT = 3;
+const MAX_CACHE = 30;
+const preloadCache = new Map(); // key -> HTMLImageElement
+const indexQueue = [];
+
+async function decodeSrc(src) {
+  // bevorzugt decode() – fällt sauber zurück
+  let img = preloadCache.get(src);
+  if (!img) {
+    img = new Image();
+    img.decoding = 'async';
+    img.loading = 'eager';
+    img.src = src;
+    preloadCache.set(src, img);
+    if (preloadCache.size > MAX_CACHE) {
+      // älteste Einträge löschen (Ringpuffer/Map-Iteration)
+      const firstKey = preloadCache.keys().next().value;
+      preloadCache.delete(firstKey);
+    }
+  }
+  try {
+    if ('decode' in img) await img.decode();
+  } catch { /* ignore */ }
+  return img;
 }
 
-function ensureImageLoaded(src, callback) {
-    const cached = preloadCache.get(src);
-    if (cached && cached.complete && cached.naturalWidth > 0) {
-        callback();
-        return;
-    }
-    const img = cached || new Image();
-    if (!cached) {
-        img.decoding = "async";
-        img.loading = "eager";
-        img.src = src;
-        preloadCache.set(src, img);
-    }
-    if (img.complete && img.naturalWidth > 0) {
-        callback();
-    } else {
-        img.onload = () => callback();
-        img.onerror = () => callback();
-    }
+async function prepareNext(fromIndex) {
+  indexQueue.length = 0;
+  for (let i = 1; i <= PREWARM_COUNT; i++) {
+    indexQueue.push((fromIndex + i) % karussellSlides.length);
+  }
+  // leise im Hintergrund vorwärmen
+  for (const idx of indexQueue) {
+    const src = karussellSlides[idx];
+    decodeSrc(src); // fire-and-forget
+  }
 }
 
-function warmNextImages(fromIndex, count) {
-    for (let i = 1; i <= count; i++) {
-        const idx = (fromIndex + i) % karussellSlides.length;
-        const src = karussellSlides[idx];
-        const cached = preloadCache.get(src);
-        if (!cached) {
-            const img = new Image();
-            img.decoding = "async";
-            img.loading = "eager";
-            img.src = src;
-            preloadCache.set(src, img);
-        }
-    }
-}
+async function showSlide(index) {
+  if (isPlaying) return;
+  isPlaying = true;
+  const mySession = ++playSessionId;
 
-preloadAll(karussellSlides);
+  const imgSrc = karussellSlides[index];
+  const welcome = document.querySelector('.welcome-text');
+  if (welcome) welcome.style.display = 'none';
 
-function showSlide(index) {
-    if (isPlaying) return;
-    isPlaying = true;
-    const mySession = ++playSessionId;
-    
-    const imgSrc = karussellSlides[index];
-    const welcome = document.querySelector('.welcome-text');
-    if (welcome) welcome.style.display = 'none';
-    
-    
-    fullscreenText.textContent = "";
-    fullscreenImg.decoding = "async";
-    fullscreenImg.loading = "eager";
-    fullscreen.classList.remove("hidden");
-    requestAnimationFrame(() => fullscreen.classList.add("visible"));
+  fullscreenText.textContent = '';
+  fullscreenImg.setAttribute('fetchpriority', index === 0 ? 'high' : 'auto');
 
-    fullscreenImg.src = imgSrc;
-    gsap.set(fullscreenImg, { opacity: 0, scale: 0.8, rotation: 0 });
+  fullscreen.classList.remove('hidden');
+  requestAnimationFrame(() => fullscreen.classList.add('visible'));
+  gsap.set(fullscreenImg, { opacity: 0, scale: 0.8, rotation: 0 });
 
-    ensureImageLoaded(imgSrc, () => {
-        const holdTime = index === 0 ? HOLD_FIRST_MS : HOLD_OTHERS_MS;
-        warmNextImages(index, 2);
+  // **WICHTIG**: vor Anzeigen dekodieren
+  await decodeSrc(imgSrc);
+  if (mySession !== playSessionId) return;
 
-        gsap.to(fullscreenImg, {
-            duration: ENTER_DURATION_MS / 1000,
-            opacity: 1,
-            scale: 1,
-            ease: "power1.out"
-        });
+  fullscreenImg.src = imgSrc;
 
-        holdTimer = setTimeout(() => {
+  const holdTime = index === 0 ? HOLD_FIRST_MS : HOLD_OTHERS_MS;
+  prepareNext(index);
+
+  gsap.to(fullscreenImg, {
+    duration: ENTER_DURATION_MS / 1000,
+    opacity: 1,
+    scale: 1,
+    ease: 'power1.out'
+  });
+
+  holdTimer = setTimeout(() => {
+    if (mySession !== playSessionId) return;
+    gsap.to(fullscreenImg, {
+      duration: EXIT_DURATION_MS / 1000,
+      opacity: 0,
+      scale: 0.9,
+      ease: 'power1.in',
+      onComplete: () => {
+        if (mySession !== playSessionId) return;
+        fullscreen.classList.remove('visible');
+        setTimeout(() => {
+          if (mySession !== playSessionId) return;
+          fullscreen.classList.add('hidden');
+          if (welcome) welcome.style.display = '';
+          current = (current + 1) % karussellSlides.length;
+          isPlaying = false;
+          gridPauseTimer = setTimeout(() => {
             if (mySession !== playSessionId) return;
-            gsap.to(fullscreenImg, {
-                duration: EXIT_DURATION_MS / 1000,
-                opacity: 0,
-                scale: 0.9,
-                ease: "power1.in",
-                onComplete: () => {
-                    if (mySession !== playSessionId) return;
-                    fullscreen.classList.remove("visible");
-                    setTimeout(() => {
-                        if (mySession !== playSessionId) return;
-                        fullscreen.classList.add("hidden");
-                        if (welcome) welcome.style.display = '';
-                        current = (current + 1) % karussellSlides.length;
-                        isPlaying = false;
-                        gridPauseTimer = setTimeout(() => {
-                            if (mySession !== playSessionId) return;
-                            if (!isPlaying) showSlide(current);
-                        }, GRID_PAUSE_MS);
-                    }, 300);
-                }
-            });
-        }, holdTime);
+            if (!isPlaying) showSlide(current);
+          }, GRID_PAUSE_MS);
+        }, 300);
+      }
     });
+  }, holdTime);
 }
 
 document.addEventListener('keydown', (e) => {
@@ -199,18 +188,20 @@ function populateGalleryOnce() {
     galleryGrid.dataset.init = '1';
 }
 
-function openFullscreenFromGallery(src) {
+async function openFullscreenFromGallery(src) {
     fullscreen.classList.remove('hidden');
     requestAnimationFrame(() => fullscreen.classList.add('visible'));
-    fullscreenImg.src = src;
     gsap.set(fullscreenImg, { opacity: 0, scale: 0.95, rotation: 0 });
-    ensureImageLoaded(src, () => {
-        gsap.to(fullscreenImg, {
-            duration: ENTER_DURATION_MS / 1000,
-            opacity: 1,
-            scale: 1,
-            ease: 'power1.out'
-        });
+    
+    // Dekodieren vor Anzeigen
+    await decodeSrc(src);
+    fullscreenImg.src = src;
+    
+    gsap.to(fullscreenImg, {
+        duration: ENTER_DURATION_MS / 1000,
+        opacity: 1,
+        scale: 1,
+        ease: 'power1.out'
     });
     if (closeFullscreenBtn) closeFullscreenBtn.classList.remove('hidden');
 }
@@ -258,5 +249,28 @@ function stopSlideshow() {
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js');
+        
+        // Persistenter Speicher anfragen (verhindert OS-Räumung bei Platzmangel)
+        if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist();
+        }
     });
 }
+
+// Mini-Cache-Audit im UI (prüft, ob wirklich alle Bilder im SW-Cache sind)
+window.auditCache = async () => {
+  if (!('caches' in window)) return console.log('No Cache API');
+  const keys = await caches.keys();
+  const imgKey = keys.find(k => k.startsWith('images-'));
+  if (!imgKey) return console.log('No images cache found');
+  
+  const c = await caches.open(imgKey);
+  const missing = [];
+  for (const src of karussellSlides) {
+    const res = await c.match(src);
+    if (!res) missing.push(src);
+  }
+  console.log(`Cache audit: ${karussellSlides.length - missing.length}/${karussellSlides.length} ok`);
+  if (missing.length) console.warn('Missing:', missing.slice(0,10), '…');
+  return { total: karussellSlides.length, cached: karussellSlides.length - missing.length, missing };
+};
