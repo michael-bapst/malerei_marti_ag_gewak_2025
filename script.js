@@ -41,7 +41,7 @@ const closeFullscreenBtn = document.getElementById("close-fullscreen");
 const ENTER_DURATION_MS = 1200;
 const EXIT_DURATION_MS = 1200;
 const HOLD_FIRST_MS = 20000;
-const HOLD_OTHERS_MS = 6000;
+const HOLD_OTHERS_MS = 4000;
 const GRID_PAUSE_MS = 2000;
 
 const PREWARM_COUNT = 3;
@@ -83,7 +83,7 @@ async function showSlide(index) {
     if (isPlaying) return;
     isPlaying = true;
     const mySession = ++playSessionId;
-
+    
     const imgSrc = karussellSlides[index];
     const welcome = document.querySelector('.welcome-text');
     if (welcome) welcome.style.display = 'none';
@@ -100,40 +100,40 @@ async function showSlide(index) {
 
     fullscreenImg.src = imgSrc;
 
-    const holdTime = index === 0 ? HOLD_FIRST_MS : HOLD_OTHERS_MS;
+        const holdTime = index === 0 ? HOLD_FIRST_MS : HOLD_OTHERS_MS;
     prepareNext(index);
 
-    gsap.to(fullscreenImg, {
-        duration: ENTER_DURATION_MS / 1000,
-        opacity: 1,
-        scale: 1,
+        gsap.to(fullscreenImg, {
+            duration: ENTER_DURATION_MS / 1000,
+                opacity: 1, 
+                scale: 1, 
         ease: 'power1.out'
     });
 
     holdTimer = setTimeout(() => {
         if (mySession !== playSessionId) return;
         gsap.to(fullscreenImg, {
-            duration: EXIT_DURATION_MS / 1000,
-            opacity: 0,
-            scale: 0.9,
+                    duration: EXIT_DURATION_MS / 1000,
+                    opacity: 0,
+                    scale: 0.9,
             ease: 'power1.in',
             onComplete: () => {
                 if (mySession !== playSessionId) return;
                 fullscreen.classList.remove('visible');
-                setTimeout(() => {
+                    setTimeout(() => {
                     if (mySession !== playSessionId) return;
                     fullscreen.classList.add('hidden');
-                    if (welcome) welcome.style.display = '';
+                        if (welcome) welcome.style.display = '';
                     presentationIndex = (presentationIndex + 1) % karussellSlides.length;
-                    isPlaying = false;
+                        isPlaying = false;
                     gridPauseTimer = setTimeout(() => {
                         if (mySession !== playSessionId) return;
                         if (!isPlaying) showSlide(presentationIndex);
-                    }, GRID_PAUSE_MS);
-                }, 300);
+                        }, GRID_PAUSE_MS);
+                    }, 300);
             }
-        });
-    }, holdTime);
+                });
+        }, holdTime);
 }
 
 document.addEventListener('keydown', (e) => {
