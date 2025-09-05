@@ -8,6 +8,13 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 </head>
 <body>
+<div class="navbar">
+    <button id="btn-gallery">Galerie</button>
+    <button id="btn-start">Start</button>
+    <button id="btn-stop">Stop</button>
+    <button id="btn-back" class="hidden">Zurück</button>
+    
+</div>
 <div class="welcome-text">
     <h1>Willkommen an der Gewak 2025</h1>
     <h2>bei der Maler Marti AG</h2>
@@ -44,9 +51,13 @@
     <img src="Bilder%20Gewak/DSC01712.JPG" alt="Innen – Deckenarbeiten">
     <img src="Bilder%20Gewak/Wohn.-%20Gesch%C3%A4ftshaus,%20Bargen%203.jpg" alt="Referenz – Wohn-/Geschäftshaus">
 </div>
+<div id="gallery" class="gallery hidden">
+    <div class="gallery-grid" id="gallery-grid"></div>
+</div>
 <div id="fullscreen" class="fullscreen hidden">
     <img id="fullscreen-img" src="" alt="">
     <div id="fullscreen-text" class="overlay-text"></div>
+    <button id="close-fullscreen" class="close-fullscreen hidden">Schließen</button>
 </div>
 <script src="script.js"></script>
 </body>
