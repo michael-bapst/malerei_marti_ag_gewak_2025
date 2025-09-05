@@ -1,4 +1,4 @@
-const CACHE_VERSION = 'v2-2025-09-05';
+const CACHE_VERSION = 'v2-2025-01-15';
 const APP_SHELL_CACHE = `app-shell-${CACHE_VERSION}`;
 const IMAGES_CACHE = `images-${CACHE_VERSION}`;
 
@@ -14,7 +14,6 @@ const APP_SHELL = [
   './icons/maskable-512.png'
 ];
 
-// Vollständiges Precaching aller Bilder aus dem Ordner (Liste muss aktuell sein)
 const IMAGE_FILES = [
   "00-13-scaled.jpg","011.JPG","017.JPG","053.JPG","0808a.jpg","1.JPG","13.jpg","14-1-scaled.jpg","18-scaled.jpg","2.JPG",
   "2016-05-10-13.13.09-2-scaled.jpg","2017-06-13 14.17.50.jpg","2017-06-13-14.25.53-scaled.jpg","2017-07-01 11.30.07.jpg","2017-07-26 08.48.52 (2).jpg","2017-07-26 08.59.31.jpg","2017-07-26 09.11.32.jpg","2017-07-26 09.14.52.jpg","2017-07-26 09.29.48.jpg","2017-07-26 09.33.55.jpg",
@@ -37,8 +36,7 @@ self.addEventListener('install', (event) => {
 
     const imgCache = await caches.open(IMAGES_CACHE);
 
-    // robustes precaching (kein Fail-All)
-    const limit = 8; // parallele Downloads
+    const limit = 8;
     let i = 0;
     async function worker() {
       while (i < IMAGE_FILES.length) {
@@ -46,7 +44,7 @@ self.addEventListener('install', (event) => {
         try {
           const res = await fetch(url, { cache: 'no-store' });
           if (res.ok) await imgCache.put(url, res.clone());
-        } catch (_) { /* ignorieren, weiter */ }
+        } catch (_) { }
       }
     }
     await Promise.all(Array.from({ length: limit }, worker));
@@ -67,12 +65,10 @@ self.addEventListener('activate', (event) => {
   })());
 });
 
-// Konsistente Bilderkennung: nur encodierter Ordner
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
   if (url.origin !== location.origin) return;
 
-  // Bilder: offline-first
   if (url.pathname.includes('/Bilder%20Gewak/')) {
     event.respondWith((async () => {
       const cache = await caches.open(IMAGES_CACHE);
@@ -89,7 +85,6 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // App-Shell: cache-first, dann Netz, dann index.html
   event.respondWith((async () => {
     const cached = await caches.match(event.request);
     if (cached) return cached;
@@ -104,5 +99,3 @@ self.addEventListener('fetch', (event) => {
     }
   })());
 });
-
-

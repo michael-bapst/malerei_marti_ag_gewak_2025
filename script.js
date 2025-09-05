@@ -27,8 +27,7 @@ const allSlides = imageFiles
     .map(name => encodeURI(baseDir + name));
 const karussellSlides = [encodeURI(baseDir + "hauptfolie.png"), ...allSlides];
 
-
-let current = 0;
+let presentationIndex = 0;
 let isPlaying = false;
 let holdTimer = null;
 let gridPauseTimer = null;
@@ -45,107 +44,102 @@ const HOLD_FIRST_MS = 20000;
 const HOLD_OTHERS_MS = 6000;
 const GRID_PAUSE_MS = 2000;
 
-// Konstante Anzahl vorwärmen
 const PREWARM_COUNT = 3;
 const MAX_CACHE = 30;
-const preloadCache = new Map(); // key -> HTMLImageElement
+const preloadCache = new Map();
 const indexQueue = [];
 
 async function decodeSrc(src) {
-  // bevorzugt decode() – fällt sauber zurück
-  let img = preloadCache.get(src);
-  if (!img) {
-    img = new Image();
-    img.decoding = 'async';
-    img.loading = 'eager';
-    img.src = src;
-    preloadCache.set(src, img);
-    if (preloadCache.size > MAX_CACHE) {
-      // älteste Einträge löschen (Ringpuffer/Map-Iteration)
-      const firstKey = preloadCache.keys().next().value;
-      preloadCache.delete(firstKey);
+    let img = preloadCache.get(src);
+    if (!img) {
+        img = new Image();
+        img.decoding = 'async';
+        img.loading = 'eager';
+        img.src = src;
+        preloadCache.set(src, img);
+        if (preloadCache.size > MAX_CACHE) {
+            const firstKey = preloadCache.keys().next().value;
+            preloadCache.delete(firstKey);
+        }
     }
-  }
-  try {
-    if ('decode' in img) await img.decode();
-  } catch { /* ignore */ }
-  return img;
+    try {
+        if ('decode' in img) await img.decode();
+    } catch { }
+    return img;
 }
 
 async function prepareNext(fromIndex) {
-  indexQueue.length = 0;
-  for (let i = 1; i <= PREWARM_COUNT; i++) {
-    indexQueue.push((fromIndex + i) % karussellSlides.length);
-  }
-  // leise im Hintergrund vorwärmen
-  for (const idx of indexQueue) {
-    const src = karussellSlides[idx];
-    decodeSrc(src); // fire-and-forget
-  }
+    indexQueue.length = 0;
+    for (let i = 1; i <= PREWARM_COUNT; i++) {
+        indexQueue.push((fromIndex + i) % karussellSlides.length);
+    }
+    for (const idx of indexQueue) {
+        const src = karussellSlides[idx];
+        decodeSrc(src);
+    }
 }
 
 async function showSlide(index) {
-  if (isPlaying) return;
-  isPlaying = true;
-  const mySession = ++playSessionId;
+    if (isPlaying) return;
+    isPlaying = true;
+    const mySession = ++playSessionId;
 
-  const imgSrc = karussellSlides[index];
-  const welcome = document.querySelector('.welcome-text');
-  if (welcome) welcome.style.display = 'none';
+    const imgSrc = karussellSlides[index];
+    const welcome = document.querySelector('.welcome-text');
+    if (welcome) welcome.style.display = 'none';
 
-  fullscreenText.textContent = '';
-  fullscreenImg.setAttribute('fetchpriority', index === 0 ? 'high' : 'auto');
+    fullscreenText.textContent = '';
+    fullscreenImg.setAttribute('fetchpriority', index === 0 ? 'high' : 'auto');
 
-  fullscreen.classList.remove('hidden');
-  requestAnimationFrame(() => fullscreen.classList.add('visible'));
-  gsap.set(fullscreenImg, { opacity: 0, scale: 0.8, rotation: 0 });
+    fullscreen.classList.remove('hidden');
+    requestAnimationFrame(() => fullscreen.classList.add('visible'));
+    gsap.set(fullscreenImg, { opacity: 0, scale: 0.8, rotation: 0 });
 
-  // **WICHTIG**: vor Anzeigen dekodieren
-  await decodeSrc(imgSrc);
-  if (mySession !== playSessionId) return;
-
-  fullscreenImg.src = imgSrc;
-
-  const holdTime = index === 0 ? HOLD_FIRST_MS : HOLD_OTHERS_MS;
-  prepareNext(index);
-
-  gsap.to(fullscreenImg, {
-    duration: ENTER_DURATION_MS / 1000,
-    opacity: 1,
-    scale: 1,
-    ease: 'power1.out'
-  });
-
-  holdTimer = setTimeout(() => {
+    await decodeSrc(imgSrc);
     if (mySession !== playSessionId) return;
+
+    fullscreenImg.src = imgSrc;
+
+    const holdTime = index === 0 ? HOLD_FIRST_MS : HOLD_OTHERS_MS;
+    prepareNext(index);
+
     gsap.to(fullscreenImg, {
-      duration: EXIT_DURATION_MS / 1000,
-      opacity: 0,
-      scale: 0.9,
-      ease: 'power1.in',
-      onComplete: () => {
-        if (mySession !== playSessionId) return;
-        fullscreen.classList.remove('visible');
-        setTimeout(() => {
-          if (mySession !== playSessionId) return;
-          fullscreen.classList.add('hidden');
-          if (welcome) welcome.style.display = '';
-          current = (current + 1) % karussellSlides.length;
-          isPlaying = false;
-          gridPauseTimer = setTimeout(() => {
-            if (mySession !== playSessionId) return;
-            if (!isPlaying) showSlide(current);
-          }, GRID_PAUSE_MS);
-        }, 300);
-      }
+        duration: ENTER_DURATION_MS / 1000,
+        opacity: 1,
+        scale: 1,
+        ease: 'power1.out'
     });
-  }, holdTime);
+
+    holdTimer = setTimeout(() => {
+        if (mySession !== playSessionId) return;
+        gsap.to(fullscreenImg, {
+            duration: EXIT_DURATION_MS / 1000,
+            opacity: 0,
+            scale: 0.9,
+            ease: 'power1.in',
+            onComplete: () => {
+                if (mySession !== playSessionId) return;
+                fullscreen.classList.remove('visible');
+                setTimeout(() => {
+                    if (mySession !== playSessionId) return;
+                    fullscreen.classList.add('hidden');
+                    if (welcome) welcome.style.display = '';
+                    presentationIndex = (presentationIndex + 1) % karussellSlides.length;
+                    isPlaying = false;
+                    gridPauseTimer = setTimeout(() => {
+                        if (mySession !== playSessionId) return;
+                        if (!isPlaying) showSlide(presentationIndex);
+                    }, GRID_PAUSE_MS);
+                }, 300);
+            }
+        });
+    }, holdTime);
 }
 
 document.addEventListener('keydown', (e) => {
     if (e.key === ' ' || e.key === 'Enter') {
         e.preventDefault();
-        if (!isPlaying) showSlide(current);
+        if (!isPlaying) showSlide(presentationIndex);
     } else if (e.key === 'Escape') {
         stopSlideshow();
     }
@@ -179,7 +173,6 @@ function populateGalleryOnce() {
         img.src = src;
         img.alt = '';
         img.addEventListener('click', () => {
-            current = idx;
             openFullscreenFromGallery(src);
         });
         frag.appendChild(img);
@@ -188,20 +181,18 @@ function populateGalleryOnce() {
     galleryGrid.dataset.init = '1';
 }
 
-async function openFullscreenFromGallery(src) {
+function openFullscreenFromGallery(src) {
     fullscreen.classList.remove('hidden');
     requestAnimationFrame(() => fullscreen.classList.add('visible'));
-    gsap.set(fullscreenImg, { opacity: 0, scale: 0.95, rotation: 0 });
-    
-    // Dekodieren vor Anzeigen
-    await decodeSrc(src);
     fullscreenImg.src = src;
-    
-    gsap.to(fullscreenImg, {
-        duration: ENTER_DURATION_MS / 1000,
-        opacity: 1,
-        scale: 1,
-        ease: 'power1.out'
+    gsap.set(fullscreenImg, { opacity: 0, scale: 0.95, rotation: 0 });
+    decodeSrc(src).then(() => {
+        gsap.to(fullscreenImg, {
+            duration: ENTER_DURATION_MS / 1000,
+            opacity: 1,
+            scale: 1,
+            ease: 'power1.out'
+        });
     });
     if (closeFullscreenBtn) closeFullscreenBtn.classList.remove('hidden');
 }
@@ -221,7 +212,7 @@ function closeFullscreenFromGallery() {
 }
 
 if (btnGallery) btnGallery.addEventListener('click', () => { location.hash = '#gallery'; });
-if (btnStart) btnStart.addEventListener('click', () => { location.hash = '#home'; if (!isPlaying) showSlide(current); });
+if (btnStart) btnStart.addEventListener('click', () => { location.hash = '#home'; if (!isPlaying) showSlide(presentationIndex); });
 if (btnStop) btnStop.addEventListener('click', () => { stopSlideshow(); });
 if (btnBack) btnBack.addEventListener('click', () => { location.hash = '#home'; });
 if (closeFullscreenBtn) closeFullscreenBtn.addEventListener('click', closeFullscreenFromGallery);
@@ -243,34 +234,13 @@ function stopSlideshow() {
         gsap.killTweensOf(fullscreenImg);
         fullscreen.classList.remove('visible');
         setTimeout(() => { if (fullscreen) fullscreen.classList.add('hidden'); }, 300);
+        const welcome = document.querySelector('.welcome-text');
+        if (welcome) welcome.style.display = '';
     }
 }
 
 if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js');
-        
-        // Persistenter Speicher anfragen (verhindert OS-Räumung bei Platzmangel)
-        if (navigator.storage && navigator.storage.persist) {
-            navigator.storage.persist();
-        }
     });
 }
-
-// Mini-Cache-Audit im UI (prüft, ob wirklich alle Bilder im SW-Cache sind)
-window.auditCache = async () => {
-  if (!('caches' in window)) return console.log('No Cache API');
-  const keys = await caches.keys();
-  const imgKey = keys.find(k => k.startsWith('images-'));
-  if (!imgKey) return console.log('No images cache found');
-  
-  const c = await caches.open(imgKey);
-  const missing = [];
-  for (const src of karussellSlides) {
-    const res = await c.match(src);
-    if (!res) missing.push(src);
-  }
-  console.log(`Cache audit: ${karussellSlides.length - missing.length}/${karussellSlides.length} ok`);
-  if (missing.length) console.warn('Missing:', missing.slice(0,10), '…');
-  return { total: karussellSlides.length, cached: karussellSlides.length - missing.length, missing };
-};
